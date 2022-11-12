@@ -1,0 +1,593 @@
+<!-- Data Visualisation of Microsoft and Apple's stock history -->
+<!-- Authur: Haoran Hong -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <title>F21DV Lab 3</title>
+  </head>
+  <body>
+    <!--Div setup-->
+    <div class="lineDiv" style="background-color: rgb(200, 200, 200)"></div>
+    <div class="pieDiv" style="background-color: rgb(200, 200, 200)"></div>
+    <div class="infoDiv" style="background-color: rgb(200, 200, 200)"></div>
+
+    <!--Style setup-->
+    <style>
+      .lineDiv {
+        width: 80%;
+        height: 80%;
+        position: absolute;
+        left: 0px;
+        top: 0px;
+      }
+
+      .pieDiv {
+        width: 20%;
+        height: 80%;
+        position: absolute;
+        right: 0px;
+        top: 0px;
+      }
+
+      .infoDiv {
+        width: 100%;
+        height: 20%;
+        position: absolute;
+        left: 0px;
+        bottom: 0px;
+      }
+      .text {
+        fill: purple;
+        font-weight: bold;
+        font: 35px sans-serif;
+      }
+
+      .textApple {
+        fill: green;
+        font-weight: bold;
+        font-size: 35px;
+      }
+
+      .textMS {
+        fill: blue;
+        font-weight: bold;
+        font-size: 35px;
+      }
+
+      .textAppleInfo {
+        fill: green;
+        font-size: 15px;
+      }
+
+      .textMSInfo {
+        fill: blue;
+        font-size: 15px;
+      }
+
+      .xAxis {
+        stroke: purple;
+        font: 15px sans-serif;
+      }
+
+      .yAxis {
+        stroke: purple;
+        font: 15px sans-serif;
+      }
+
+      .labels {
+        font: 20px sans-serif;
+      }
+
+      .title {
+        fill: purple;
+        font: 40px sans-serif;
+      }
+    </style>
+
+    <script>
+      // CSV data links
+      const appleCSV =
+        "https://raw.githubusercontent.com/Hozza66/F21DV_Public/main/AAPL.csv";
+      const appleTimelineCSV =
+        "https://raw.githubusercontent.com/Hozza66/F21DV_Public/main/AAPL-Timeline.csv";
+      const msCSV =
+        "https://raw.githubusercontent.com/Hozza66/F21DV_Public/main/MSFT.csv";
+      const msTimelineCSV =
+        "https://raw.githubusercontent.com/Hozza66/F21DV_Public/main/MSFT-Timeline.csv";
+
+      // Variables
+      var appleData;
+      var msData;
+      var msTimelineData;
+      var appleClose;
+      var msClose;
+      var currentAppleData;
+      var currentAppleTimelineData;
+      var currentMSData;
+      var currentMSTimelineData;
+      var outstandingShares = 16.32; // current amount of outstanding shares for apple (billions)
+      var currentDate;
+      var currentDateString;
+      var currentYearString;
+
+      // Date setup
+      var parseDate = d3.timeParse("%Y-%m-%d");
+      var msStartDate = parseDate("1986-03-13");
+
+      // x, y and margin setup
+      var width = 1500,
+        height = 750;
+      const margin = 100;
+
+      // Line chart svg setup
+      const svgLineGraph = d3
+        .select(".lineDiv")
+        .append("svg")
+        // .attr("width", width)
+        // .attr("height", height)
+        .attr("preserveAspectRatio", "none")
+        .attr("viewBox", `0 0 ${width} ${height * 2}`);
+
+      // Line chart y axis scale setup
+      var x = d3.scaleTime().range([0, width - margin * 2]);
+      svgLineGraph
+        .append("g")
+        .attr("class", "xAxis")
+        .attr(
+          "transform",
+          "translate(" + margin + "," + (height - margin) + ")"
+        )
+        .call(d3.axisBottom(x));
+
+      // Line chart x axis scale setup
+      var y = d3.scaleLinear().range([0, height - margin * 2]);
+      svgLineGraph
+        .append("g")
+        .attr("class", "yAxis")
+        .attr("transform", "translate(" + margin + "," + margin + ")")
+        .call(d3.axisLeft(y));
+
+      // Pie chart svg setup
+      const svgPieChart = d3
+        .select(".pieDiv")
+        .append("svg")
+        .attr("preserveAspectRatio", "none")
+        .attr("viewBox", `0 0 ${width / 3} ${height * 2}`);
+
+      // Info box SVG setup
+      const svgInfo = d3
+        .select(".infoDiv")
+        .append("svg")
+        .attr("preserveAspectRatio", "none")
+        .attr("viewBox", `0 0 ${width} ${height / 3}`);
+
+      // Pie chart setup
+      const radius = Math.min(width, height) / 2;
+      var color = d3.scaleOrdinal().range(["green", "blue"]);
+      var pie = d3.pie().sort(null);
+      var arc = d3
+        .arc()
+        .innerRadius(0)
+        .outerRadius(radius - margin * 2);
+      var oldData = pie([50, 50]);
+
+      // Loading and setup all of the dataset csv
+      Promise.all([
+        d3.csv(appleCSV),
+        d3.csv(msCSV),
+        d3.csv(appleTimelineCSV),
+        d3.csv(msTimelineCSV),
+      ]).then(function (data) {
+        appleData = data[0];
+        msData = data[1];
+        appleTimelineData = data[2];
+        msTimelineData = data[3];
+
+        // Date processing for axis domain
+        let dateData = appleData.map(function (d) {
+          return parseDate(d.Date);
+        });
+        let earliestDate = d3.min(dateData);
+        let latestDate = d3.max(dateData);
+
+        // Line chart X axis domain setup
+        x.domain([new Date(earliestDate), new Date(latestDate)]);
+        svgLineGraph
+          .select(".xAxis")
+          .transition()
+          .duration(1000)
+          .call(d3.axisBottom(x));
+
+        // Line chart y axis domain setup
+        y.domain([d3.max(appleData, (d) => parseFloat(d.Close)), 0]);
+        svgLineGraph
+          .select(".yAxis")
+          .transition()
+          .duration(1000)
+          .call(d3.axisLeft(y));
+
+        // Call draw line chart function
+        drawLineChart();
+
+        // Graph overlay setup
+        var lineGraphOverlay = svgLineGraph
+          .append("g")
+          .attr("class", "lineGraphOverlay");
+
+        // Verticle line for mouse over
+        lineGraphOverlay
+          .append("path")
+          .attr("class", "vertLine")
+          .style("stroke", "purple")
+          .style("stroke-width", "1px")
+          .style("opacity", "0");
+
+        // Rect element for mouseover function
+        lineGraphOverlay
+          .append("rect")
+          .attr("width", width - margin * 2)
+          .attr("height", height)
+          .attr("x", margin)
+          .attr("fill", "none")
+          .attr("pointer-events", "all")
+          .on("mouseover", function () {
+            d3.select(".vertLine").style("opacity", "1"); // Show verticle line when mouse over rect
+          })
+          .on("mouseout", function () {
+            d3.select(".vertLine").style("opacity", "0"); // Hide verticle line when mouse over rect
+          })
+          .on("mousemove", function (event) {             // mousemove actions on rect
+            d3.selectAll(".text").remove(); // remove text with every move
+            d3.selectAll(".textApple").remove();
+            d3.selectAll(".textMS").remove();
+            d3.selectAll(".textAppleInfo").remove();
+            d3.selectAll(".textMSInfo").remove();
+            d3.selectAll(".marker").remove();
+
+            // Draw verticle line at mouse position
+            var mouse = d3.pointer(event);
+            d3.select(".vertLine").attr("d", function () {
+              var d =
+                "M" +
+                mouse[0] +
+                "," +
+                (height - margin) +
+                " " +
+                mouse[0] +
+                "," +
+                0;
+              return d;
+            });
+
+            // Converting mouse x value to date values
+            currentDate = x.invert(mouse[0] - margin);
+            currentDateString = currentDate.toISOString().substring(0, 10);
+            currentYearString = currentDate.toISOString().substring(0, 4);
+
+            // call function to match date with dataset
+            findDateInData();
+            
+            // call function to draw circle markers
+            drawLineMarkers();
+
+            // Call draw pie chart function
+            drawPieChart([currentAppleData.Close, currentMSData.Close]);
+
+            // call function to draw pie chart text
+            drawPieChartText();
+
+            // call function for info text
+            drawInfoText();
+          }); 
+      }); 
+
+      // Function for drawing line graph
+      function drawLineChart() {
+        // Draw line for Apple
+        var line = svgLineGraph
+          .append("path")
+          .datum(appleData)
+          .transition()
+          .duration(1000)
+          .attr("fill", "none")
+          .attr("stroke", "green")
+          .attr("stroke-width", 2)
+          .attr(
+            "d",
+            d3
+              .line()
+              .x(function (d) {
+                return x(parseDate(d.Date)) + margin;
+              })
+              .y(function (d) {
+                return y(d.Close) + margin;
+              })
+          );
+
+        // Draw line for microsoft
+        line = svgLineGraph
+          .append("path")
+          .datum(msData)
+          .transition()
+          .duration(1000)
+          .attr("fill", "none")
+          .attr("stroke", "blue")
+          .attr("stroke-width", 1.5)
+          .attr(
+            "d",
+            d3
+              .line()
+              .x(function (d) {
+                return x(parseDate(d.Date)) + margin;
+              })
+              .y(function (d) {
+                return y(d.Close) + margin;
+              })
+          );
+
+        // Add axis lables for line graph
+        svgLineGraph
+          .append("text")
+          .attr("class", "labels")
+          .attr("text-anchor", "middle")
+          .attr("x", width / 2)
+          .attr("y", height - margin / 2)
+          .text("Year");
+
+        // Add axis lables for line graph
+        svgLineGraph
+          .append("text")
+          .attr("class", "labels")
+          .attr("text-anchor", "middle")
+          .attr("x", 0 - margin * 3)
+          .attr("y", margin / 2)
+          .attr("transform", "rotate(-90)")
+          .text("Price Per Share (USD)");
+
+        // Add extra information text
+        svgLineGraph
+          .append("text")
+          .attr("x", margin * 2)
+          .attr("y", margin * 2)
+          .text(
+            "*Microsoft's outstanding share amount adjusted to the same as Apple's, price reflects the adjustments."
+          );
+
+        // Line Chart title
+        svgLineGraph
+          .append("text")
+          .attr("class", "title")
+          .attr("x", width / 4)
+          .attr("y", margin / 2)
+          .text("Apple vs Microsoft Share Price/Company Value Comparision");
+
+        // Line chart Legend
+        svgLineGraph
+          .append("rect")
+          .attr("width", 30)
+          .attr("height", 30)
+          .attr("x", margin * 2)
+          .attr("y", margin)
+          .attr("fill", "green");
+
+        // Line chart Legend
+        svgLineGraph
+          .append("text")
+          .attr("width", 30)
+          .attr("height", 30)
+          .attr("x", margin * 2.5)
+          .attr("y", margin * 1.2)
+          .attr("fill", "green")
+          .attr("font-weight", "bold")
+          .text("Apple (AAPL)");
+
+        // Line chart Legend
+        svgLineGraph
+          .append("rect")
+          .attr("width", 30)
+          .attr("height", 30)
+          .attr("x", margin * 2)
+          .attr("y", margin * 1.5)
+          .attr("fill", "blue");
+
+        // Line chart Legend
+        svgLineGraph
+          .append("text")
+          .attr("width", 30)
+          .attr("height", 30)
+          .attr("x", margin * 2.5)
+          .attr("y", margin * 1.7)
+          .attr("fill", "blue")
+          .attr("font-weight", "bold")
+          .text("Microsoft (MSFT)");
+      }
+
+      // Function to draw line markers
+      function drawLineMarkers() {
+        // Draw circle marker for apple line
+        svgLineGraph
+          .append("circle")
+          .attr("cx", function () {
+            return x(parseDate(currentAppleData.Date)) + margin;
+          })
+          .attr("cy", function () {
+            return y(currentAppleData.Close) + margin;
+          })
+          .attr("r", 5)
+          .attr("class", "marker")
+          .attr("fill", "green")
+          .attr("stroke", "black")
+          .attr("stroke-width", 3);
+
+        // Draw circle marker for microsoft line
+        svgLineGraph
+          .append("circle")
+          .attr("cx", function () {
+            if (currentMSData.Date == "0") {
+              return -100;
+            }
+            return x(parseDate(currentMSData.Date)) + margin;
+          })
+          .attr("cy", function () {
+            return y(currentMSData.Close) + margin;
+          })
+          .attr("r", 5)
+          .attr("class", "marker")
+          .attr("fill", "blue")
+          .attr("stroke", "black")
+          .attr("stroke-width", 3);
+      }
+
+      // Fucntion to draw pie chart
+      function drawPieChart(dataset) {
+        // Clear data
+        var pieChartData = [];
+
+        // Setup
+        var pathPie = svgPieChart.selectAll("path").data(pie(dataset));
+
+        // Drawing the pie chart with data values
+        pathPie
+          .enter()
+          .append("path")
+          .merge(pathPie)
+          .attr("fill", function (d, i) {
+            return color(i);
+          })
+          .attr("transform", "translate(" + width / 6 + "," + height / 2 + ")")
+          .transition()
+          .duration(1000)
+          .attrTween("d", function (d, i) {
+            // Interpolate the start and end angles between the last dataset and the new dataset with transition
+            var i1 = d3.interpolate(oldData[i].startAngle, d.startAngle);
+            var i2 = d3.interpolate(oldData[i].endAngle, d.endAngle);
+            return function (t) {
+              d.startAngle = i1(t);
+              d.endAngle = i2(t);
+              return arc(d);
+            };
+          })
+          .on("end", function () {
+            oldData = pie(dataset); // Set new dataset as old dataset for next update
+          });
+      }
+
+      // Function for pie chart text
+      function drawPieChartText() {
+        // Pie chart text for current date
+        svgPieChart
+          .append("text")
+          .attr("class", "text")
+          .attr("x", margin / 4)
+          .attr("y", margin * 6)
+          .text("Date: " + currentDateString);
+
+        // Pie chart text for current apple share price
+        svgPieChart
+          .append("text")
+          .attr("class", "textApple")
+          .attr("x", margin / 4)
+          .attr("y", margin * 6.5)
+          .attr("font-size", "50px")
+          .text("Apple Share Price: $" + round2(currentAppleData.Close));
+
+        // Pie chart text for current apple value
+        svgPieChart
+          .append("text")
+          .attr("class", "textApple")
+          .attr("x", margin / 4)
+          .attr("y", margin * 7)
+          .attr("font-size", "50px")
+          .text(
+            "Apple Value: $" +
+              round2(currentAppleData.Close * outstandingShares) +
+              "B"
+          );
+
+        // Pie chart text for current microsoft share price
+        svgPieChart
+          .append("text")
+          .attr("class", "textMS")
+          .attr("x", margin / 4)
+          .attr("y", margin * 7.5)
+          .text("Microsoft Share Price: $" + round2(currentMSData.Close));
+
+        // Pie chart text for current microsoft value
+        svgPieChart
+          .append("text")
+          .attr("class", "textMS")
+          .attr("x", margin / 4)
+          .attr("y", margin * 8)
+          .text(
+            "Microsoft Value: $" +
+              +round2(currentMSData.Close * outstandingShares) +
+              "B"
+          );
+      }
+
+      // Function to find the current date in datasets and fetch the instance for that date
+      function findDateInData() {
+        // Search and match current mouseover date for in apple dataset
+        for (var prop in appleData) {
+          if (currentDateString == appleData[prop].Date) {
+            currentAppleData = appleData[prop];
+          }
+        }
+
+        // Search and match current mouseover date for in apple timeline dataset
+        for (var prop in appleTimelineData) {
+          if (currentYearString == appleTimelineData[prop].Date) {
+            currentAppleTimelineData = appleTimelineData[prop];
+          }
+        }
+
+        // Search and match current mouseover date for in microsoft dataset
+        for (var prop in msData) {
+          if (currentDateString == msData[prop].Date) {
+            currentMSData = msData[prop];
+          }
+          // Set values to 0 if stock haven't been released yet
+          if (currentDate < msStartDate) {
+            currentMSData = { Close: "0", Date: "0" };
+          }
+        }
+
+        // Search and match current mouseover date for in microsoft dataset
+        for (var prop in msTimelineData) {
+          if (currentYearString == msTimelineData[prop].Date) {
+            currentMSTimelineData = msTimelineData[prop];
+          }
+        }
+      }
+
+      function drawInfoText() {
+        // Display text for apple information on current year
+        svgInfo
+          .append("text")
+          .attr("class", "textAppleInfo")
+          .attr("x", margin / 6)
+          .attr("y", margin / 4)
+          .text(
+            "Apple " + currentYearString + ": " + currentAppleTimelineData.Info
+          );
+
+        // Display text for microsoft information on current year
+        svgInfo
+          .append("text")
+          .attr("class", "textMSInfo")
+          .attr("x", margin / 6)
+          .attr("y", margin / 2)
+          .text(
+            "Microsoft " + currentYearString + ": " + currentMSTimelineData.Info
+          );
+      }
+
+      // Fucntion to round to 2 decimal place.
+      function round2(num) {
+        return Math.round(num * 100) / 100;
+      }
+    </script>
+  </body>
+</html>
